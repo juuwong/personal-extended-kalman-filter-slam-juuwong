@@ -52,9 +52,11 @@ void Mapper::initialize(const string& filename) {
     vector<MapPoint> records; 
     if (in_file.is_open()) {
         while (getline (in_file, line)){
-                    m.id= stof(line.substr(0, line.find(' ')));
-                    m.x = stof(line.substr(1, line.find(' ')));
-                    m.y = stof(line.substr(2, line.find(' ')));
+                int space1 = line.find(' ');
+                int space2 = line.find(' ', space1 + 1);
+                m.id= stof(line.substr(0, space1)); 
+                m.x = stof(line.substr(space1 + 1, space2 - space1 - 1));
+                m.y = stof(line.substr(space2 + 1));
             } 
             records.push_back(m);
         }
