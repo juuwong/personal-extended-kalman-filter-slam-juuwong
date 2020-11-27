@@ -1,74 +1,122 @@
 #include "ekfslam.h"
 
-EKFSLAM::EKFSLAM(unsigned int landmark_size, unsigned int robot_pose_size, float _motion_noise){
-    mu = VectorXd::Zero(2*landmark_size + robot_pose_size, 1);
-    robotSigma = MatrixXd::Zero(robot_pose_size,robot_pose_size);
-    robMapSigma = MatrixXd::Zero(robot_pose_size, 2*landmark_size);
-    mapSigma =  INF*MatrixXd::Zero(2*robot_pose_size, 2*robot_pose_size);
-    Sigma = MatrixXd::Zero(2*landmark_size + robot_pose_size,2*landmark_size + robot_pose_size);
-    Sigma.topLeftCorner(robot_pose_size, robot_pose_size) = robotSigma;
-    Sigma.topRightCorner(robot_pose_size, 2*landmark_size) = robMapSigma; 
-    Sigma.bottomLeftCorner(2*landmark_size,robot_pose_size) = robMapSigma.transpose(); 
-    Sigma.bottomRightCorner(2*landmark_size, 2*landmark_size) = mapSigma;
+// constructor
+EKFSLAM::EKFSLAM() {}
 
-    Q = MatrixXd::Zero(2*landmark_size + robot_pose_size,2*landmark_size + robot_pose_size);
-    Q.topLeftCorner(3,3) << _motion_noise, 0, 0,
-        0, _motion_noise, 0,
-        0, 0, _motion_noise/10;
+// destructor
+EKFSLAM::~EKFSLAM() {}
 
-    observedLandmarks.resize(landmark_size);
-    fill(observedLandmarks.begin(), observedLandmarks.end(), false);
+// Inputs:
+// landmark_size - number of landmarks on the map
+// robot_pose_size - number of state variables to track on the robot
+// motion_noise - amount of noise to add due to motion
+void EKFSLam::Initialize(unsigned int landmark_size, unsigned int robot_pose_size, float _motion_noise) {
+  
+    int L = landmark_size;
+    int R = rob_pose_size;
+    float motion_noise =_motion_noise;
+
+    // initialize state vector mu as zero vector of size 2*L+R for x and y parameters per visible landmark and each robot state variable (three)
+    /*
+    ie. first sensor dataset is visible to landmarks 1 and 2 with given odometry  
+    ODOMETRY r1 t r2
+    SENSOR 1 range_1 bearing_1
+    SENSOR 2 range_2 bearing_2
+    updated_mu = [mu(0) , mu(1) , mu(2) , mu(3) , mu(4)] + [t*cos(mu(4) + r1) , t*sin(mu(4) + r1) , t*cos(mu(4) + r1) , t*sin(mu(4) + r1) , r1 + r2]
+    */
+    int length = 2 * L + R;
+    mu = VectorXd::Zero(length, 1);
+    // initialize entire EKF matrix with proper dimensions according to slide 12
+    // Sigma.upperLeft - covariance for robot state variables
+    // Sigma.upperRight - covariance for robot to landmarks
+    // Sigma.lowerLeft - transpose of Sigma.upperRight
+    // Sigma.lowerRight - covariance between landmarks
+    Sigma = MatrixXd::Zero(length, length); // (2*L+3) x (2*L+3)
+    Sigma.upperLeft(R, R) = MatrixXd::Zero(R, R); // 3 x 3
+    Sigma.upperRight(R, length - R) = MatrixXd::Zero(R, length - R); // 3 x 2*L
+    Sigma.lowerLeft(length - R, R) = MatrixXd::Zero(R, length - R).transpose(); // 2*L x 3
+    Sigma.lowerRight(length - R, length - R) = MatrixXd::Identity(length - R, length - R); // 2*L x 2*L
+
+    // from Henry's notes, Rt is the Additive Gaussian White Noise (AWGN) extrinsic from sensor
+    // Sigma_updated = Signma + Rt from slides
+    // Sigma_updated = Signma - Rt from Henry's notes
+    Rt = MatrixXd::Zero(length , length);
+    Rt = {
+    {motion_noise , 0 , 0} ,
+    {0 , motion_noise , 0} ,
+    {0 , 0 , motion_noise}
+    };
 }
 
-void EKFSLAM::Prediction(const OdoReading& motion){
-    double angle = mu(2);
-    MatrixXd Gt = MatrixXd(3,3);
-    Gt << 1, 0, -motion.t*sin(angle + motion.r1),
-        0, 1, motion.t*cos(angle + motion.r1),
-        0, 0, 0;
+void EKFSLAM::Prediction(const OdoReading& motion) {
+    // UPDATE STATE VECTOR mu ****
+
+    // initialize the three state variables as type float from sensor_info.h
+    float r1 = motion.r1;
+    float t = motion.t;
+    float r2 = motion.r2;
+    // assuming the robot is traveling at constant velocity of 1 m/s across time t
+    mu(0) = mu(0) + t*cos(mu(2) + r1); // x' = x + cos(θ + θ1)*t
+    mu(1) = mu(1) + t*sin(mu(2) + r1); // y' = y + sin(θ + θ1)*t
+    mu(2) = mu(2) + r1 + r2; // θ' = θ + θ1 + θ2
     
-    mu(0) = mu(0) + motion.t*cos(angle + motion.r1);
-    mu(1) = mu(1) + motion.t*sin(angle + motion.r1);
-    mu(2) = mu(2) + motion.r1 + motion.r2;
+    // COMPUTE JACOBIAN ****
+    
+    // Jacobian = Jacobian of the motion + I(3) 
+    // Gt = I(3) + partial derivative of mu wrt θ (I think) 
+    MatrixXd Gt = MatrixXd(3,3);
+    Gt = {
+    {1 , 0 , -t*sin(mu(2) + r1)} ,
+    {0 , 1 , t*cos(mu(2) + r1)} ,
+    {0 , 0 , 1}
+    };
 
-    int s = Sigma.cols();
-    Sigma.topLeftCorner(3,3) = Gt*Sigma.topLeftCorner(3,3) * Gt.transpose();
-    Sigma.topRightCorner(3, s-3) = Gt*Sigma.topLeftCorner(3, s-3);
-    Sigma.bottomLeftCorner(s-3, 3) = Sigma.topLeftCorner(3, s-3).transpose();
-    Sigma = Sigma + Q;
+    // UPDATE COVARIANCE MATRICES ****
 
+    // Sigma_updated = Gt*Sigma*Gt.T + Rt, Rt = 0?, from slide 17
+
+    Sigma.upperLeft(R, R) = Gt * Sigma.upperLeft(R, R) * Gt.transpose();
+    Sigma.upperRight(R, length - R) = Gt * Sigma.upperRight(R, length - R);
+    Sigma.lowerLeft(length - R, R) = Sigma.upperRight(R, length - R).transpose();
+    // Sigma.lowerLeft remains unchanged since landmark to landmark info remains consistent
 }
 
-void EKFSLAM::Correction(const vector<LaserReading>& observation){
-    int s = observation.size();
-    VectorXd Z = VectorXd::Zero(2*s);
-    VectorXd eZ = VectorXd::Zero(2*s);
-
-    int m = observedLandmarks.size();
-    MatrixXd H = MatrixXd::Zero(2*s, 2*m + 3);
-
-    for (int i = 0; i < s; i++){
-        auto& r = observation[i];
-        if (!observedLandmarks[r.id - 1]){
-            mu(2*r.id + 1) = mu(0) + r.range*cos(mu(2) + r.bearing);
-            mu(2*r.id + 2) = mu(1) + r.range*sin(mu(2) + r.bearing);
-            observedLandmarks[r.id - 1] = true;
+void EKFSLAM::Correction(const vector<LaserReading>& observation) {
+    // this whole assignment is absurdly long
+    // this part especially
+    int n = observation.size();
+ 
+    for (int i = 0; i < n; i++) {
+        int landmarkId = observation.id;
+        float range = observation.range; // rt
+        float bearing = observation.bearing; // θj
+        
+        j=ct
+        if (landmark not observed yet){
+            // mu'(j_x) = x' + rt * cos(θ' + θj)
+            mu(x of landmark j) = mu(0) + range * cos(mu(2) + bearing)
+            // mu'(j_y) = y' + rt * sin(θ' + θj)
+            mu(y of landmark j) = mu(1) + range * cos()
         }
-        Z(2*i) = r.range;
-        Z(2*i + 1) = r.bearing;
-        double dx = mu(2*r.id + 1) - mu(0);
-        double dy = mu(2*r.id + 2) - mu(1);
-        double q = sqrt(pow(dx, 2) + pow(dy,2));
-        eZ(2*i) = q;
-        eZ(2*i + i) = atan2(dy, dx) - mu(2);
-        H.block<2,3>(2*i, 0) << -q*dx/pow(q,2) , -q*dy/pow(q,2), 0,
-            dy/pow(q,2), -dx/pow(q, 2), -1;
-        H.block<2,2>(2*i, 2*r.id + 1)<< q*dx/pow(q,2), q*dy/pow(q,2),
-            -dy/pow(q,2), dx/pow(q,2);
+        //δ_x = mu'(j_x) - x'
+        dx = mu(x of landmark j) - mu(0);
+        //δ_y = mu'(j_y) - y'
+        dy = mu(y of landmark j) - mu(1);
+        // q = δ_T * δ is the Gramian matrix. How do we compute?
+        Z(first row of landmark) = sqrt(q)
+        Z(second row of landmark) = atan2(dy,dx) - mu(2)
+        F = MatrixXd::Identity(2*n,2*n) // with some zero columns
+        H = (1/q)*lowH*F
+        Qt = MatrixXd::Identity(2*n,2*n) * //AWGN 
+        K = Sigma*H.transpose()*((H*Sigma*H.transpose() + Qt).inverse())
+        mu = mu + K * (dz)
+        
     }
-    R = MatrixXd::Identity(2*s, 2*s)*0.01;
-    MatrixXd k = Sigma*H.transpose()*(H*Sigma*H.transpose() + R);
-    VectorXd diff = Z - eZ;
-    mu = mu + k*diff;
-    Sigma = Sigma - k*H*(H*Sigma*H.transpose() + R);
+}
+
+void KalmanRun(const Record& record){
+    // Prediction() inputs odometry readings
+    Prediction(record.odo);
+    // Correction() inputs laser scan data
+    Correction(record.scans);
 }

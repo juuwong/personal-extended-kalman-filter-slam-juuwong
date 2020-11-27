@@ -1,3 +1,7 @@
+/*
+import and sort sensor.dat into structs
+*/
+
 #pragma once
 
 #include "Eigen/Dense"

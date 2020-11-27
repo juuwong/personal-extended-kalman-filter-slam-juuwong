@@ -1,4 +1,6 @@
-
+/*
+import landmark data from world.dat into MapPoint struct of class vector
+*/
 #pragma once
 
 #include "./common.h"
@@ -31,7 +33,6 @@ void Mapper::initialize(const string& filename) {
     }
 
     /* TODO: Complete initialize()
-    read from world.dat
     entries are integer values split by whitespace
     entries: landmark id x-coordinate y-coordinate
     ie. "1 2 1" is Landmark 1 at position (2,1)
@@ -47,18 +48,32 @@ void Mapper::initialize(const string& filename) {
     make sure to initialize struct with appropriate corresponding members in the main
     not sure if works completely yet
     */
+    /*
     std::string line; 
     MapPoint m;
     vector<MapPoint> records; 
     if (in_file.is_open()) {
         while (getline (in_file, line)){
-                int space1 = line.find(' ');
-                int space2 = line.find(' ', space1 + 1);
-                m.id= stof(line.substr(0, space1)); 
-                m.x = stof(line.substr(space1 + 1, space2 - space1 - 1));
-                m.y = stof(line.substr(space2 + 1));
+                    m.id= stof(line.substr(0, line.find(' ')));
+                    m.x = stof(line.substr(1, line.find(' ')));
+                    m.y = stof(line.substr(2, line.find(' ')));
             } 
             records.push_back(m);
         }
+        */
+    // copied format from sensor_info.h
+	string line;
+	while(getline(in_file, line)) {
+		istringstream ss(line);
+		MapPoint map;
+		ss>>map.id;
+		ss>>map.x;
+		ss>>map.y;
+		data.push_back(map);
+        // if(debug)?
+		cout << data.back().id << ": " << data.back().x << ": " << data.back().y << endl;
+	}
+    if (in_file.is_open()) {
         in_file.close();
+    }
 }

@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <stdint.h>
+#include <stdint.h> // not located in repository?
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -14,6 +14,6 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
-#define debug 0
+#define debug 0 // how to use
 
 using namespace std;
