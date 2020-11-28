@@ -30,14 +30,8 @@ class EKFSLAM {
     EKFSLAM();
 
     /****** TODO *********/
-    // Overloaded Constructor
-    // Inputs:
-    // landmark_size - number of landmarks on the map
-    // robot_pose_size - number of state variables to track on the robot
-    // motion_noise - amount of noise to add due to motion
-    EKFSLAM(unsigned int landmark_size,
-        unsigned int robot_pose_size = 3,
-        float _motion_noise = 0.1);
+    // Overloaded Constructor -> Initialize
+    void Initialize(unsigned int landmark_size , unsigned int robot_pose_size = 3 , float _motion_noise = 0.1);
 
     // Standard Destructor
     virtual ~EKFSLAM();
@@ -55,6 +49,9 @@ class EKFSLAM {
     // Inputs:
     // observation - vector containing all observed landmarks from a laser scanner
     void Correction(const vector<LaserReading>& observation);
+
+    // simplify the main.cpp by combining the prediction and correction steps
+    void KalmanRun(const Record& record);
 
     VectorXd getMu() const {
         return mu;

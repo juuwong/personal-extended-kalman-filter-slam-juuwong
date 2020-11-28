@@ -1,3 +1,12 @@
+/*
+This header file declares all the functions needed to display the program after completion. 
+DrawEllipse - mark the updated position of the observer
+DrawProbEllipse - mark the predicted landmark positions on the plot
+DrawLandMarks - mark the true landmark positions on the plot
+l_settings - landmark draw settings
+o_settings - observation draw settings
+Plot State - handles updated info w/ observation lines b/t observer and visible landmarks
+*/
 #include "./common.h"
 #include "./mapper.h"
 #include "Eigen/Dense"

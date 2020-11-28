@@ -1,4 +1,6 @@
-
+/*
+import landmark data from world.dat into MapPoint struct of class vector
+*/
 #pragma once
 
 #include "./common.h"
